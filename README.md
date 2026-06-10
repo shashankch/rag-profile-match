@@ -1,1 +1,258 @@
 # RAG-Based Profile Matching Engine
+
+## Overview
+
+This project implements a Retrieval-Augmented Generation (RAG) profile matching engine that maps candidate resumes against job descriptions (JDs). It combines dense semantic retrieval (via ChromaDB and Sentence Transformers) with sparse lexical retrieval (via BM25) to perform robust **hybrid search**. It extracts structured metadata (Candidate Name, Skills, Experience Years, Education) from multiple file formats (`.txt`, `.docx`, `.pdf`) and utilizes them for strict filter bounds.
+
+---
+
+## Core Architecture
+
+### System Flow & Architecture
+
+```mermaid
+graph TD
+    %% Styling
+    classDef default fill:#1e1e24,stroke:#3a3f58,stroke-width:1px,color:#dcdcdc;
+    classDef highlight fill:#4a154b,stroke:#e01e5a,stroke-width:2px,color:#ffffff;
+    classDef storage fill:#154b3c,stroke:#2e8b57,stroke-width:2px,color:#ffffff;
+    classDef process fill:#1d3557,stroke:#457b9d,stroke-width:2px,color:#ffffff;
+    classDef logic fill:#3d348b,stroke:#7678ed,stroke-width:2px,color:#ffffff;
+
+    subgraph INGEST ["1. Resume Ingestion Pipeline"]
+        A["Resume Files (.txt, .pdf, .docx)"] --> B(fs_tools.py)
+        B --> C(resume_rag.py)
+
+        subgraph PROCESSING ["Document Processing"]
+            C --> D[MetadataExtractor]
+            C --> E[ResumeChunker]
+
+            D --> D1[Candidate Name]
+            D --> D2[Skills & Techs]
+            D --> D3[Exp Years]
+            D --> D4[Education]
+
+            E --> E1["Section Chunks (SUMMARY, SKILLS, etc.)"]
+        end
+
+        D1 & D2 & D3 & D4 & E1 --> F[ResumeRAGPipeline]
+        F --> G["SentenceTransformer (all-MiniLM-L6-v2)"]
+    end
+
+    subgraph STORAGE ["2. Vector Database Storage"]
+        G --> H[("ChromaDB Collection: 'resumes'")]
+    end
+
+    subgraph MATCHING ["3. Job Matching Engine"]
+        JD["Job Description (JD)"] --> J(job_matcher.py)
+        J --> K[Auto-Detect Experience Requirement]
+        J --> L[Filter Constraints]
+
+        H -.-> M[Hybrid Retrieval Engine]
+        K & L & JD --> M
+
+        subgraph SEARCH ["Hybrid Search Score (60/40)"]
+            M --> N["Semantic Search (Cosine Similarity)"]
+            M --> O["Keyword Search (BM25 Okapi)"]
+
+            N --> P[Combined Hybrid Score]
+            O --> P
+        end
+
+        P --> Q[Aggregate Max Chunk Score per Candidate]
+        Q --> R[Generate Match Reasoning & Skill Overlaps]
+        R --> S[Ranked Candidate Matches]
+    end
+
+    class A,JD highlight;
+    class H storage;
+    class B,C,F,J,M process;
+    class D,E,N,O,P,Q,R logic;
+```
+
+---
+
+### 1. File Access Layer (`fs_tools.py`)
+
+- Reuses the robust file extraction functions from ([llm_file_system_assistant](https://github.com/shashankch/llm_file_system_assistant)).
+- Supports reading text content and metadata from `.txt`, `.pdf` (via `PyPDF2`), and `.docx` (via `python-docx`) files.
+
+### 2. Document Processing Pipeline (`resume_rag.py`)
+
+- **Metadata Extraction**:
+  - **Candidate Name**: Parsed dynamically via naming convention heuristics or text structure fallbacks.
+  - **Skills**: Extracted using word boundaries and lookup heuristics against a pre-defined catalog of 60+ technologies.
+  - **Experience Years**: Parsed utilizing case-insensitive regex patterns (e.g. `X+ years`, `X yrs exp`).
+  - **Education**: Scans education headers and patterns for university degree labels.
+- **Section Chunking**: Splits resumes into coherent chunks preserving critical sections (e.g. SUMMARY, SKILLS, EXPERIENCE, EDUCATION) to maintain semantic context.
+- **Embedding & Storage**: Vectorizes resume chunks using `sentence-transformers/all-MiniLM-L6-v2` and persists them alongside metadata in a local ChromaDB collection.
+
+### 3. Job Matching Engine (`job_matcher.py`)
+
+- **Hybrid Search**: Computes a combined match score (60% semantic cosine similarity + 40% normalized BM25 score) scaled to `0-100`.
+- **Constraint Filtering**: Filters out candidates who do not satisfy minimum experience or must-have skill requirements.
+- **Match Reasoning**: Explains which sections had the highest relevance overlaps and details matches for key skills.
+
+---
+
+## Project Layout
+
+```text
+rag_profile_matching/
+├── src/
+│   ├── config.py             # Global paths and model configurations
+│   ├── fs_tools.py           # Reused filesystem tools from "gh/shashankch/llm_file_system_assistant"
+│   ├── resume_rag.py         # Section chunking and database ingestion
+│   ├── job_matcher.py        # Hybrid query matching and ranking
+│   └── generate_dataset.py   # Dataset generation helper
+├── notebooks/
+│   ├── evaluation.ipynb      # Experimentation notebook
+│   └── run_eval.py           # Command-line benchmark script
+├── tests/
+│   └── test_matcher.py       # Automated unit test suite
+├── data/
+│   ├── resumes/              # 31 generated resume documents (.txt, .docx, .pdf)
+│   └── job_descriptions/     # 5 job description test files
+├── requirements.txt          # Python dependencies
+└── README.md                 # Project documentation
+```
+
+---
+
+## Setup & Ingestion
+
+### Setup the Environment
+
+You can configure the project using either `uv` or standard Python tools.
+
+#### Option A: Using `uv` (Recommended)
+
+```bash
+# Create and activate environment
+uv venv .venv
+source .venv/bin/activate
+
+# Install dependencies
+uv pip install -r requirements.txt
+```
+
+#### Option B: Using Standard Python and Pip
+
+```bash
+# Create and activate environment
+python3 -m venv .venv
+source .venv/bin/activate  # Or .venv\Scripts\activate on Windows
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### Execution Steps
+
+Follow these steps to run the pipeline end-to-end:
+
+#### 1. Generate the Dataset
+
+Create the mock resumes (31 files covering different extensions) and job descriptions:
+
+```bash
+python src/generate_dataset.py
+```
+
+#### 2. Ingest the Resumes
+
+Index the resume chunks and metadata in ChromaDB:
+
+```bash
+python src/resume_rag.py
+```
+
+#### 3. Run a Query Test
+
+Query the matching engine using the default CLI job description:
+
+```bash
+python src/job_matcher.py
+```
+
+#### 4. Run the Benchmarks & Evaluation Suite
+
+Execute the performance benchmarking script to view latencies and matching quality:
+
+```bash
+python notebooks/run_eval.py
+```
+
+#### 5. Run Unit Tests
+
+Execute the unit tests verifying metadata extraction and section chunking:
+
+```bash
+python tests/test_matcher.py
+```
+
+---
+
+## Example
+
+```json
+Loading weights: 100%|███████████████████████████████████████████████| 103/103 [00:00<00:00, 9225.14it/s]
+Matching JD: 'Looking for a Python developer with 3+ years experience and knowledge of Docker/Kubernetes.'
+Auto-detected experience requirement from JD: 3+ years
+No explicit must-have skills filter applied.
+{
+  "job_description": "Looking for a Python developer with 3+ years experience and knowledge of Docker/Kubernetes.",
+  "top_matches": [
+    {
+      "candidate_name": "Marcus Wright",
+      "resume_path": "/Users/shashank/Dev/AI/rag_profile_matching/data/resumes/resume_marcus_wright.docx",
+      "match_score": 60,
+      "matched_skills": [],
+      "relevant_excerpts": [
+        "Full Stack Developer with 3+ years of experience. Full Stack Engineer specializing in the MERN stack with 3 years of experience building web applications.",
+        "Full Stack Developer at ProjectAngel (2023-Present)\n- Created user-facing features using React.\n- Designed backend services using Node.js and Express."
+      ],
+      "reasoning": "Candidate possesses 3 years of experience (education: 'B.S. in Computer Science, UT Austin'). Highest matching content was found in sections: SUMMARY."
+    },
+    {
+      "candidate_name": "John Doe",
+      "resume_path": "/Users/shashank/Dev/AI/rag_profile_matching/data/resumes/resume_john_doe.pdf",
+      "match_score": 60,
+      "matched_skills": [
+        "Docker",
+        "Python"
+      ],
+      "relevant_excerpts": [
+        "Backend Developer with 5+ years of experience. Backend Developer with 5 years of experience\nbuilding APIs, managing databases, and containerizing software.",
+        "Python, FastAPI, SQL, PostgreSQL, Docker, Git, REST API"
+      ],
+      "reasoning": "Strong skill overlap for Docker, Python. Candidate possesses 5 years of experience (education: 'M.S. in Computer Science, Georgia Tech'). Highest matching content was found in sections: SUMMARY."
+    },
+    {
+      "candidate_name": "Diana Prince",
+      "resume_path": "/Users/shashank/Dev/AI/rag_profile_matching/data/resumes/resume_diana_prince.txt",
+      "match_score": 53,
+      "matched_skills": [
+        "Python"
+      ],
+      "relevant_excerpts": [
+        "Product Manager with 8+ years of experience. Technical Product Manager with a strong software engineering background, managing roadmap and release cycles for cloud products.",
+        "Git, Python, SQL, Jira, AWS"
+      ],
+      "reasoning": "Strong skill overlap for Python. Candidate possesses 8 years of experience (education: 'Not Specified'). Highest matching content was found in sections: SUMMARY."
+    },
+    ....
+  ]
+}
+```
+
+---
+
+## Matching Performance
+
+When evaluated across the 5 job descriptions (JD), the engine demonstrates:
+
+- **Precision**: Highly accurate match lists, strictly filtering out candidates with experience levels below the JD requirements (e.g. Java JD requiring 5+ years).
+- **Latency**: Fast performance results:
+  - **Average Match Latency**: ~45 ms
+  - **Median Match Latency**: ~30 ms
