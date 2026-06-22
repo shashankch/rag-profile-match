@@ -10,17 +10,19 @@ from resume_rag import MetadataExtractor
 
 
 class JobMatcher:
-    def __init__(self):
-        self.embedder = SentenceTransformer(config.EMBEDDING_MODEL)
+    def __init__(self, model_name: Optional[str] = None, collection_name: str = 'resumes'):
+        self.model_name = model_name or config.EMBEDDING_MODEL
+        self.embedder = SentenceTransformer(self.model_name)
         self.client = chromadb.PersistentClient(path=config.VECTOR_DB_PATH)
-        self.collection = self.client.get_collection('resumes')
+        self.collection = self.client.get_collection(collection_name)
 
     def match(
         self,
         job_description: str,
         k: int = 10,
         min_exp: Optional[int] = None,
-        must_have_skills: Optional[List[str]] = None
+        must_have_skills: Optional[List[str]] = None,
+        apply_filters: bool = True
     ) -> Dict:
         # Auto-detect minimum experience years from JD if not explicitly provided
         if min_exp is None:
@@ -80,18 +82,19 @@ class JobMatcher:
 
         for chunk_idx, (doc_id, doc_text, meta) in enumerate(zip(ids, documents, metadatas)):
             candidate_exp = int(meta.get('experience_years', 0))
-            # Filter by experience
-            if candidate_exp < min_exp:
-                continue
-
-            # Filter by must-have skills
-            candidate_skills_str = meta.get('skills', '')
-            candidate_skills = [s.strip().lower() for s in candidate_skills_str.split(',') if s.strip()]
-            
-            if must_have_skills:
-                meets_skills = all(s.lower() in candidate_skills for s in must_have_skills)
-                if not meets_skills:
+            if apply_filters:
+                # Filter by experience
+                if candidate_exp < min_exp:
                     continue
+
+                # Filter by must-have skills
+                candidate_skills_str = meta.get('skills', '')
+                candidate_skills = [s.strip().lower() for s in candidate_skills_str.split(',') if s.strip()]
+                
+                if must_have_skills:
+                    meets_skills = all(s.lower() in candidate_skills for s in must_have_skills)
+                    if not meets_skills:
+                        continue
 
             # Compute combined hybrid score: 60% semantic + 40% keyword
             semantic_score = semantic_scores_dict.get(doc_id, 0.5)

@@ -132,10 +132,11 @@ class ResumeChunker:
 
 
 class ResumeRAGPipeline:
-    def __init__(self):
-        self.embedder = SentenceTransformer(config.EMBEDDING_MODEL)
+    def __init__(self, model_name: Optional[str] = None, collection_name: str = 'resumes'):
+        self.model_name = model_name or config.EMBEDDING_MODEL
+        self.embedder = SentenceTransformer(self.model_name)
         self.client = chromadb.PersistentClient(path=config.VECTOR_DB_PATH)
-        self.collection = self.client.get_or_create_collection('resumes')
+        self.collection = self.client.get_or_create_collection(collection_name)
 
     def ingest_directory(self, resume_dir: str):
         extractor = MetadataExtractor()

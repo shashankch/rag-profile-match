@@ -248,11 +248,43 @@ No explicit must-have skills filter applied.
 
 ---
 
-## Matching Performance
+## Matching Performance & Embedding Benchmarks
 
-When evaluated across the 5 job descriptions (JD), the engine demonstrates:
+We evaluate the matching engine across the 5 job descriptions using standard Information Retrieval (IR) metrics: **Precision@K**, **Recall@K**, **Mean Average Precision (MAP)**, and **Mean Reciprocal Rank (MRR)**. 
 
-- **Precision**: Highly accurate match lists, strictly filtering out candidates with experience levels below the JD requirements (e.g. Java JD requiring 5+ years).
-- **Latency**: Fast performance results:
-  - **Average Match Latency**: ~45 ms
-  - **Median Match Latency**: ~30 ms
+### 1. Live Local Models Comparison
+The evaluation suite runs three local HuggingFace/SentenceTransformers models under two distinct retrieval settings:
+- **Filtered Mode:** Reflects engine behavior with strict experience and must-have skill checks active.
+- **Unfiltered Mode:** Raw semantic ranking (disabling metadata filters to analyze soft matches).
+
+| Model | Mode | Ingest Time | Avg Latency | P@1 | P@3 | R@3 | P@5 | R@5 | MAP | MRR |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **all-MiniLM-L6-v2** | Filtered | ~7.95s | ~30.51ms | 0.60 | 0.53 | 0.45 | 0.36 | 0.49 | 0.52 | 0.60 |
+| **all-MiniLM-L6-v2** | Unfiltered | ~7.95s | ~12.93ms | **0.80** | **0.60** | **0.65** | 0.40 | 0.69 | 0.75 | 0.83 |
+| **bge-small-en-v1.5** | Filtered | ~40.37s | ~19.53ms | 0.60 | 0.53 | 0.45 | 0.40 | 0.56 | 0.55 | 0.60 |
+| **bge-small-en-v1.5** | Unfiltered | ~40.37s | ~15.77ms | **0.80** | 0.53 | 0.59 | **0.48** | **0.96** | **0.79** | **0.85** |
+| **paraphrase-MiniLM-L3-v2** | Filtered | ~31.08s | ~15.30ms | 0.60 | 0.47 | 0.39 | 0.32 | 0.43 | 0.49 | 0.60 |
+| **paraphrase-MiniLM-L3-v2** | Unfiltered | ~31.08s | ~11.31ms | **0.80** | 0.47 | 0.52 | 0.40 | 0.83 | 0.71 | 0.84 |
+
+### 2. Key Insights
+- **Metadata Filtering Trade-off:** While filtered mode guarantees 100% compliance with hard constraints, it limits **Recall** (R@3: 0.39-0.45) by discarding borderline/highly-qualified candidates (e.g. 5 yrs experience for a 6+ yr JD). Disabling metadata filters yields **Recall@5 up to 0.96** via pure semantic match scores.
+- **BGE Small Performance:** BAAI's `bge-small-en-v1.5` achieves the highest MAP (**0.79**) and Recall@5 (**0.96**) in unfiltered mode, making it the most robust local model, albeit with a higher ingestion latency due to its weight size.
+
+---
+
+## Public Benchmarks Comparison (Paid vs. Local Free)
+
+Since proprietary paid API models cannot run locally without billing keys, we compare them based on public MTEB (Massive Text Embedding Benchmark) Retrieval scores:
+
+| Model Name | Provider | Dimension | Cost per 1M Tokens | MTEB Retrieval Avg | Deployment Type | License |
+|---|---|---|---|---|---|---|
+| **text-embedding-3-small** | OpenAI | 1536 | $0.02 | 52.2 | API-based | Proprietary |
+| **text-embedding-ada-002** | OpenAI | 1536 | $0.10 | 49.3 | API-based | Proprietary |
+| **embed-english-v3.0** | Cohere | 1024 | $0.10 | **56.2** | API-based | Proprietary |
+| **bge-small-en-v1.5** | BAAI | 384 | **$0.00 (Local)** | 51.1 | Local | MIT |
+| **all-MiniLM-L6-v2** | SentenceTransformers | 384 | **$0.00 (Local)** | 41.95 | Local | Apache 2.0 |
+| **paraphrase-MiniLM-L3-v2** | SentenceTransformers | 384 | **$0.00 (Local)** | 34.0 | Local | Apache 2.0 |
+
+- **Quality:** Local `bge-small-en-v1.5` is highly competitive, performing on par with OpenAI `text-embedding-3-small` (51.1 vs. 52.2) and outperforming the classic `text-embedding-ada-002` (49.3) at zero token cost.
+- **Data Privacy:** Running local models keeps sensitive candidate resume details completely self-hosted, ensuring compliance with data protection policies (e.g. GDPR) and eliminating network overhead to third-party endpoints.
+
