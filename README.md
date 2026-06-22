@@ -85,11 +85,11 @@ graph TD
   - **Experience Years**: Parsed utilizing case-insensitive regex patterns (e.g. `X+ years`, `X yrs exp`).
   - **Education**: Scans education headers and patterns for university degree labels.
 - **Section Chunking**: Splits resumes into coherent chunks preserving critical sections (e.g. SUMMARY, SKILLS, EXPERIENCE, EDUCATION) to maintain semantic context.
-- **Embedding & Storage**: Vectorizes resume chunks using `sentence-transformers/all-MiniLM-L6-v2` and persists them alongside metadata in a local ChromaDB collection.
+- **Embedding & Storage**: Vectorizes resume chunks using a SentenceTransformer model (default: `all-MiniLM-L6-v2`, with full support for custom models) and persists them alongside metadata in a local ChromaDB collection (default: `resumes`).
 
 ### 3. Job Matching Engine (`job_matcher.py`)
 
-- **Hybrid Search**: Computes a combined match score (60% semantic cosine similarity + 40% normalized BM25 score) scaled to `0-100`.
+- **Hybrid Search**: Computes a combined match score (60% semantic cosine similarity + 40% normalized BM25 score) scaled to `0-100` using the specified collection and embedding model.
 - **Constraint Filtering**: Filters out candidates who do not satisfy minimum experience or must-have skill requirements.
 - **Match Reasoning**: Explains which sections had the highest relevance overlaps and details matches for key skills.
 
@@ -101,6 +101,7 @@ graph TD
 rag_profile_matching/
 ├── src/
 │   ├── config.py             # Global paths and model configurations
+│   ├── eval_config.py        # Evaluation ground truth and embedding benchmark configurations
 │   ├── fs_tools.py           # Reused filesystem tools from "gh/shashankch/llm_file_system_assistant"
 │   ├── resume_rag.py         # Section chunking and database ingestion
 │   ├── job_matcher.py        # Hybrid query matching and ranking
