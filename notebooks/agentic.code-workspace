@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "../../llm_file_system_assistant"
+		},
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../agentic_profile_matching"
+		}
+	]
+}

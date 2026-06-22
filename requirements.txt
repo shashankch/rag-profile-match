@@ -1,0 +1,7 @@
+chromadb
+sentence-transformers
+PyPDF2
+python-docx
+rank-bm25
+jupyter
+reportlab
