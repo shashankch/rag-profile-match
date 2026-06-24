@@ -75,7 +75,7 @@ graph TD
 ### 1. File Access Layer (`fs_tools.py`)
 
 - Reuses the robust file extraction functions from ([llm_file_system_assistant](https://github.com/shashankch/llm_file_system_assistant)).
-- Supports reading text content and metadata from `.txt`, `.pdf` (via `PyPDF2`), and `.docx` (via `python-docx`) files.
+- Supports reading text content and metadata from `.txt`, `.pdf` (via `pypdf`), and `.docx` (via `python-docx`) files.
 
 ### 2. Document Processing Pipeline (`resume_rag.py`)
 
